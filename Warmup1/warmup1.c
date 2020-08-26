@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,8 @@
 
 #define MAX_LINE_LENGTH 1024
 #define descFieldLength 24
+
+int transCnt = 0;
 
 typedef struct tagTransactionField {
     char type;
@@ -77,7 +80,6 @@ void readFile(FILE *fp, My402List *myList) {
         if (tab_ptr) {
             *tab_ptr++ = '\0';
         }
-        printf("type: %s\n", start_ptr);
         if (start_ptr[0] != '+' && start_ptr[0] != '-') {
             fprintf(stderr,
                     "Error: The transaction type should be \"+\" or \"-\" in "
@@ -98,31 +100,35 @@ void readFile(FILE *fp, My402List *myList) {
         // test time format
         char tp[16];
         convertTimeFormat(tp, transTime);
-        printf("Time: %s\n", start_ptr);
-        printf("Time: %s\n", tp);
         if (transTime > currentTime) {
             fprintf(stderr,
                     "Error: The transaction time is later than the current "
                     "time!\n");
+            exit(0);
         } else if (transTime < 0) {
             fprintf(stderr,
                     "Error: The value of the transaction time could not be "
                     "negative!\n");
+            exit(0);
         } else {
             trans->time = transTime;
         }
-        printf("Time: %ld\n", trans->time);
         //////////////////////////////////////////////////////////////////////
         // 3rd Field (amount)
         start_ptr = tab_ptr;
         tab_ptr = strchr(start_ptr, '\t');
         if (tab_ptr) {
             *tab_ptr++ = '\0';
+        } else {
+            fprintf(stderr, "Error: The amount can't not be empty!\n");
+            exit(0);
         }
+        char *amt = start_ptr;
         trans->amount = atof(start_ptr) * 100;
-        printf("amount: %s\n", start_ptr);
-        printf("amount: %d\n", trans->amount);
-        printf("amount: %d.%.2d\n", trans->amount / 100, trans->amount % 100);
+        if (start_ptr && strlen(start_ptr) > 10) {
+            fprintf(stderr, "Error: Transaction amount is too large!\n");
+            exit(0);
+        }
         //////////////////////////////////////////////////////////////////////
         // 4th Field (description)
         start_ptr = tab_ptr;
@@ -138,14 +144,9 @@ void readFile(FILE *fp, My402List *myList) {
             exit(0);
         }
         printf("Description: %s\n", trans->description);
-        // add in to myList
+        // append to myList
         My402ListAppend(myList, trans);
     }
-
-    // printf("%d\n", My402ListLength(myList));
-
-    // fgets(buf, sizeof(buf), fp);
-    // fprintf(stdout, "%s\n", buf);
 }
 
 int amountDigit(int amount) {
@@ -168,12 +169,54 @@ char *removeLeadingSpace(char *desc) {
     return strFinal;
 }
 
-int lengthOfDesc(char *desc) {
-    int i = 0;
-    while (desc[i] != '\0') {
-        i++;
+void FormatDollarsWithOneCommas(int dollars, char buf[80]) {
+    char dollars_rest[4];  // a period
+    dollars_rest[3] = '\0';
+    int dollars_first = dollars / 1000;
+    int i = 2;
+    while (dollars != 0 && i >= 0) {
+        dollars_rest[i--] = dollars % 10 + '0';
+        dollars /= 10;
     }
-    return i;
+    snprintf(buf, 80, "%d,%s", dollars_first, dollars_rest);
+}
+
+void FormatDollarsWithTwoCommas(int dollars, char buf[80]) {
+    int dollars_first = dollars / 1000000;
+    char dollars_second[4];
+    char dollars_rest[4];
+    dollars_second[3] = dollars_rest[3] = '\0';
+    int i = 2;
+    while (dollars != 0 && i >= 0) {
+        dollars_rest[i--] = dollars % 10 + '0';
+        dollars /= 10;
+    }
+    i = 2;
+    while (dollars != 0 && i >= 0) {
+        dollars_second[i--] = dollars % 10 + '0';
+        dollars /= 10;
+    }
+    snprintf(buf, 80, "%d,%s,%s", dollars_first, dollars_second, dollars_rest);
+}
+/* cited from Warmup1 FAQ */
+void formatCents(int amt_in_cents, char buf[80]) {
+    if (amt_in_cents >= 1000000000) {
+        snprintf(buf, 80, "?,???,???.??");
+        return;
+    }
+    int cents = amt_in_cents % 100;
+    int dollars = amt_in_cents / 100;
+    if (dollars >= 1000000) {
+        char dollar_buf[80];
+        FormatDollarsWithTwoCommas(dollars, dollar_buf);
+        snprintf(buf, 80, "%s.%02d", dollar_buf, cents);
+    } else if (dollars >= 1000) {
+        char dollar_buf[80];
+        FormatDollarsWithOneCommas(dollars, dollar_buf);
+        snprintf(buf, 80, "%s.%02d", dollar_buf, cents);
+    } else {
+        snprintf(buf, 80, "%d.%02d", dollars, cents);
+    }
 }
 
 void printList(My402List *myList) {
@@ -184,41 +227,82 @@ void printList(My402List *myList) {
         exit(0);
     }
 
-    int balance = 0;
+    int balance_in_cents = 0;
     TransField *trans = (TransField *)malloc(sizeof(TransField));
     // char *desc = (char *)malloc(sizeof(char) * 1024);
     for (elem = My402ListFirst(myList); elem != NULL;
          elem = My402ListNext(myList, elem)) {
         // TransField *trans = (TransField *)malloc(sizeof(TransField));
-        trans = (TransField *)elem->obj;
+        trans = elem->obj;
         // Time Field
         char timeStamp[16];
         time_t time = trans->time;
         convertTimeFormat(timeStamp, time);
         fprintf(stdout, "| %s | ", timeStamp);
+        ////////////////////////////////////////////////////////////////
         // Description Field
         char *tmpDesc = trans->description;
         char desc[25];
         tmpDesc = removeLeadingSpace(trans->description);
         desc[24] = '\0';
         strncpy(desc, tmpDesc, 24);
-        // printf("[%ld]", strlen(desc));
-        // printf("[%d]", lengthOfDesc(desc));
-        if (strlen(desc) != 0)
+        // add ' ' to the end of the desc
+        if (strlen(desc) < 24) {
             for (int i = strlen(desc) - 1; i < descFieldLength; i++) {
                 desc[i] = ' ';
             }
-
+        }
         fprintf(stdout, "%s | ", desc);
+        ////////////////////////////////////////////////////////////////
+        // amount Field
+        int amt_in_cents = trans->amount;
+        char amount_buf[80];
+        formatCents(amt_in_cents, amount_buf);
+        // printf("[%ld]", strlen(amount_buf));
+        char amount[15];
+        amount[14] = '\0';
+        int amount_idx = 12;
 
-        fprintf(stdout, "%d\n", trans->amount);
+        for (int i = strlen(amount_buf) - 1; i >= 0; i--) {
+            amount[amount_idx--] = amount_buf[i];
+        }
+        while (amount_idx) {
+            amount[amount_idx--] = ' ';
+        }
+        if (trans->type == '-') {
+            amount[0] = '(';
+            amount[13] = ')';
+        } else {
+            amount[0] = ' ';
+            amount[13] = ' ';
+        }
+        fprintf(stdout, "%s | ", amount);
+        ////////////////////////////////////////////////////////////////
+        // balance Field
+        if (trans->type == '+') {
+            balance_in_cents += trans->amount;
+        } else {
+            balance_in_cents -= trans->amount;
+        }
+        char balance_buf[80];
+        formatCents(balance_in_cents, balance_buf);
+        // printf("[%ld]", strlen(amount_buf));
+        char balance[15];
+        balance[14] = '\0';
+        int balance_idx = 12;
 
-        // fprintf(stdout, "| %s", desc);
-        // fprintf(stdout, "| %d | %d", trans->amount,
-        // amountDigit(trans->amount)); printf("amount: %d.%.2d\n",
-        // trans->amount / 100, trans->amount % 100); fprintf(stdout, "| %s",
-        // trans->description);
-        // free(trans);
+        for (int i = strlen(balance_buf) - 1; i >= 0; i--) {
+            balance[balance_idx--] = balance_buf[i];
+        }
+        while (balance_idx) {
+            balance[balance_idx--] = ' ';
+        }
+        balance[0] = ' ';
+        balance[13] = ' ';
+        fprintf(stdout, "%s |", balance);
+        ////////////////////////////////////////////////////////////////
+        transCnt++;
+        if (transCnt != 4) fprintf(stdout, "\n");
     }
     free(elem);
     free(trans);
@@ -247,6 +331,28 @@ void printFooter() {
         "-------------+\n");
 }
 
+void sortList(My402List *myList) {
+    My402ListElem *elem = NULL;
+    My402ListElem *nextElem = NULL;
+    void *tmp;
+    for (elem = My402ListFirst(myList); My402ListNext(myList, elem) != NULL;
+         elem = My402ListNext(myList, elem)) {
+        for (nextElem = My402ListNext(myList, elem); nextElem != NULL;
+             nextElem = My402ListNext(myList, nextElem)) {
+            if (((TransField *)elem->obj)->time >
+                ((TransField *)nextElem->obj)->time) {
+                tmp = elem->obj;
+                elem->obj = nextElem->obj;
+                nextElem->obj = tmp;
+            } else if (((TransField *)elem->obj)->time ==
+                       ((TransField *)nextElem->obj)->time) {
+                fprintf(stderr, "Error: Two TimeStamp could not be same!\n");
+                exit(0);
+            }
+        }
+    }
+}
+
 /* ----------------------- main() ----------------------- */
 int main(int argc, char *argv[]) {
     My402List *myList = (My402List *)malloc(sizeof(My402List));
@@ -259,6 +365,7 @@ int main(int argc, char *argv[]) {
         printf("reading %s...\n", argv[1]);
     }
     readFile(fp, myList);
+    sortList(myList);
     printHeader();
     printList(myList);
     printFooter();
@@ -274,19 +381,6 @@ int main(int argc, char *argv[]) {
     printf("%s", removeLeadingSpace(a));
     return 0;
 }
-
-// char *tmp[4];
-// int tokenCount = 0;
-// char *token = strtok(buf, "\t");
-// while (token && tokenCount < 4) {
-//     tmp[tokenCount++] = strdup(token);
-//     // printf("%s\n", token);
-//     token = strtok(NULL, "\t");
-// }
-// // for (int i = 0; i < 4; i++) {
-// //     printf("%s\n", tmp[i]);
-// // }
-// tokenCount = 0;
 
 // read file and store in the object
 // sort by time stamp (need to check identical)
