@@ -247,11 +247,13 @@ void printList(My402List *myList) {
         desc[24] = '\0';
         strncpy(desc, tmpDesc, 24);
         // add ' ' to the end of the desc
+        // printf("[%lu]", strlen(desc));
         if (strlen(desc) < 24) {
             for (int i = strlen(desc) - 1; i < descFieldLength; i++) {
                 desc[i] = ' ';
             }
         }
+
         fprintf(stdout, "%s | ", desc);
         ////////////////////////////////////////////////////////////////
         // amount Field
@@ -290,7 +292,6 @@ void printList(My402List *myList) {
         char balance[15];
         balance[14] = '\0';
         int balance_idx = 12;
-
         for (int i = strlen(balance_buf) - 1; i >= 0; i--) {
             balance[balance_idx--] = balance_buf[i];
         }
@@ -306,7 +307,6 @@ void printList(My402List *myList) {
     }
     free(elem);
     free(trans);
-    // free(desc);
 }
 
 void printHeader() {
@@ -369,27 +369,7 @@ int main(int argc, char *argv[]) {
     printHeader();
     printList(myList);
     printFooter();
-    // printf("%s", My402ListLast(myList)->obj);
     fclose(fp);
-    // ** time stamp format test //
-    // char tmp[16];
-    // time_t t = time(NULL);
-    // convertTimeFormat(tmp, t);
-    // printf("%s\n", tmp);
     free(myList);
-    char *a = "      123 4\n";
-    printf("%s", removeLeadingSpace(a));
     return 0;
 }
-
-// read file and store in the object
-// sort by time stamp (need to check identical)
-// if type == '-', need to add ( ) in the amount
-// Date - buf[3] ~ buf[17]
-// Desc - buf[21] ~ buf[44]
-// Amount - buf[48] ~ buf[61]
-// need to handle some
-// digit <= 5, xxx.xx
-//  5 < digit <= 8 && amount < 10 Million xxx,xxx.xx
-
-// Balance - buf[65] ~ buf [78]
