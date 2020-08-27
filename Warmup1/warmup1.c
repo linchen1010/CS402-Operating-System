@@ -124,7 +124,7 @@ void readFile(FILE *fp, My402List *myList) {
             *tab_ptr++ = '\0';
         }
         time_t currentTime = time(NULL);
-        time_t transTime = (int)atoi(start_ptr);
+        time_t transTime = atoi(start_ptr);
         // test time format
         char tp[16];
         convertTimeFormat(tp, transTime);
@@ -151,7 +151,18 @@ void readFile(FILE *fp, My402List *myList) {
             fprintf(stderr, "Error: The amount can't not be empty!\n");
             exit(0);
         }
-        trans->amount = atof(start_ptr) * 100;
+        // hadnling value in int and decimal
+        char *tmpPeriod = strtok(start_ptr, ".");
+        int amtInt = atoi(tmpPeriod);
+        tmpPeriod = strtok(NULL, ".");
+        if (strlen(tmpPeriod) > 2) {
+            fprintf(stderr,
+                    "Error: The amount of number after decimal could only be 2 "
+                    "(Ex: xxx.xx) !\n");
+            exit(0);
+        }
+        int amtDecimal = atoi(tmpPeriod);
+        trans->amount = (100 * amtInt + amtDecimal);
         if (start_ptr && strlen(start_ptr) > 10) {
             fprintf(stderr, "Error: Transaction amount is too large!\n");
             exit(0);
@@ -176,15 +187,6 @@ void readFile(FILE *fp, My402List *myList) {
     }
 }
 
-int amountDigit(int amount) {
-    int count = 0;
-    while (amount != 0) {
-        amount /= 10;
-        count++;
-    }
-    return count;
-}
-
 char *removeLeadingSpace(char *desc) {
     int i = 0;
     char *str;
@@ -197,33 +199,17 @@ char *removeLeadingSpace(char *desc) {
 }
 
 void FormatDollarsWithOneCommas(int dollars, char buf[80]) {
-    char dollars_rest[4];  // a period
-    dollars_rest[3] = '\0';
     int dollars_first = dollars / 1000;
-    int i = 2;
-    while (dollars != 0 && i >= 0) {
-        dollars_rest[i--] = dollars % 10 + '0';
-        dollars /= 10;
-    }
-    snprintf(buf, 80, "%d,%s", dollars_first, dollars_rest);
+    int dollars_rest = dollars % 1000;
+    snprintf(buf, 80, "%d,%03d", dollars_first, dollars_rest);
 }
 
 void FormatDollarsWithTwoCommas(int dollars, char buf[80]) {
     int dollars_first = dollars / 1000000;
-    char dollars_second[4];
-    char dollars_rest[4];
-    dollars_second[3] = dollars_rest[3] = '\0';
-    int i = 2;
-    while (dollars != 0 && i >= 0) {
-        dollars_rest[i--] = dollars % 10 + '0';
-        dollars /= 10;
-    }
-    i = 2;
-    while (dollars != 0 && i >= 0) {
-        dollars_second[i--] = dollars % 10 + '0';
-        dollars /= 10;
-    }
-    snprintf(buf, 80, "%d,%s,%s", dollars_first, dollars_second, dollars_rest);
+    int dollars_second = (dollars - (dollars_first * 1000000)) / 1000;
+    int dollars_rest = dollars % 1000;
+    snprintf(buf, 80, "%d,%03d,%03d", dollars_first, dollars_second,
+             dollars_rest);
 }
 /* cited from Warmup1 FAQ */
 void formatCents(int amt_in_cents, char buf[80]) {
@@ -231,7 +217,7 @@ void formatCents(int amt_in_cents, char buf[80]) {
         snprintf(buf, 80, "?,???,???.??");
         return;
     }
-    int cents = amt_in_cents % 100;
+    int cents = abs(amt_in_cents % 100);
     int dollars = amt_in_cents / 100;
     if (dollars >= 1000000) {
         char dollar_buf[80];
@@ -304,12 +290,14 @@ void printList(My402List *myList) {
         ////////////////////////////////////////////////////////////////
         // balance Field
         if (trans->type == '+') {
-            balance_in_cents += trans->amount;
+            balance_in_cents += amt_in_cents;
         } else {
-            balance_in_cents -= trans->amount;
+            balance_in_cents -= amt_in_cents;
         }
         char balance_buf[80];
-        formatCents(balance_in_cents, balance_buf);
+        int tmp_balance = abs(balance_in_cents);
+        formatCents(tmp_balance, balance_buf);
+        // fprintf(stdout, "%d\n", balance_in_cents);
         char balance[15];
         balance[14] = '\0';
         int balance_idx = 12;
@@ -319,8 +307,13 @@ void printList(My402List *myList) {
         while (balance_idx) {
             balance[balance_idx--] = ' ';
         }
-        balance[0] = ' ';
-        balance[13] = ' ';
+        if (balance_in_cents < 0) {
+            balance[0] = '(';
+            balance[13] = ')';
+        } else {
+            balance[0] = ' ';
+            balance[13] = ' ';
+        }
         fprintf(stdout, "%s |", balance);
         ////////////////////////////////////////////////////////////////
         fprintf(stdout, "\n");
@@ -365,7 +358,7 @@ void sortList(My402List *myList) {
                 nextElem->obj = tmp;
             } else if (((TransField *)elem->obj)->time ==
                        ((TransField *)nextElem->obj)->time) {
-                fprintf(stderr, "Error: Two TimeStamp could not be same!\n");
+                fprintf(stderr, "Error: Two timeStamp could not be same!\n");
                 exit(0);
             }
         }
