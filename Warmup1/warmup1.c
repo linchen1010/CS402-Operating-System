@@ -7,7 +7,6 @@
 #include <unistd.h>
 
 #include "cs402.h"
-#include "my402list.c"
 #include "my402list.h"
 
 #define MAX_LINE_LENGTH 1024
@@ -23,6 +22,35 @@ typedef struct tagTransactionField {
 } TransField;
 
 /* ----------------------- functions ----------------------- */
+
+FILE *readCommandLine(int argc, char *argv[]) {
+    if (argc != 2 && argc != 3) {
+        fprintf(stderr, "Error: Invalid numbers of command line argumnets!\n");
+        fprintf(stderr, "Usage: ./warmup1 sort [tfile]\n");
+        return NULL;
+    } else {
+        if (strcmp(argv[1], "sort") != 0) {
+            fprintf(stderr, "Error: Invalid command!\n");
+            fprintf(stderr, "Usage: ./warmup1 sort [tfile]\n");
+            return NULL;
+        } else {
+            if (argv[2]) {
+                FILE *fp = fopen(argv[2], "r");
+                if (fp == NULL) {
+                    fprintf(stderr, "Error: Can't not read %s ...\n", argv[2]);
+                    return NULL;
+                } else {
+                    return fp;
+                }
+            } else {
+                return stdin;
+            }
+        }
+    }
+    FILE *fp = fopen(argv[1], "r");
+    return fp;
+}
+
 void convertTimeFormat(char *tmp, time_t t) {
     char buf[26];
     strcpy(buf, ctime(&t));
@@ -43,7 +71,7 @@ void readFile(FILE *fp, My402List *myList) {
         fprintf(stdout, "Error: Unable to initilize the list!\n");
         exit(0);
     }
-    //////////////////////////
+    ////////////////////////////////////////////////////////////////
     // Read the tfile data line by line and store in tmp as a string
     while ((fgets(buf, sizeof(buf), fp) != NULL)) {
         TransField *trans = (TransField *)malloc(sizeof(TransField));
@@ -123,7 +151,6 @@ void readFile(FILE *fp, My402List *myList) {
             fprintf(stderr, "Error: The amount can't not be empty!\n");
             exit(0);
         }
-        char *amt = start_ptr;
         trans->amount = atof(start_ptr) * 100;
         if (start_ptr && strlen(start_ptr) > 10) {
             fprintf(stderr, "Error: Transaction amount is too large!\n");
@@ -143,7 +170,7 @@ void readFile(FILE *fp, My402List *myList) {
             fprintf(stderr, "Transaction desciption cannot be empty.\n");
             exit(0);
         }
-        printf("Description: %s\n", trans->description);
+        // printf("Description: %s\n", trans->description);
         // append to myList
         My402ListAppend(myList, trans);
     }
@@ -221,18 +248,15 @@ void formatCents(int amt_in_cents, char buf[80]) {
 
 void printList(My402List *myList) {
     My402ListElem *elem = (My402ListElem *)malloc(sizeof(My402ListElem));
-    // TransField *trans = NULL;
+    TransField *trans = NULL;
     if (My402ListEmpty(myList)) {
         fprintf(stderr, "The list should not be empty! \n");
         exit(0);
     }
 
     int balance_in_cents = 0;
-    TransField *trans = (TransField *)malloc(sizeof(TransField));
-    // char *desc = (char *)malloc(sizeof(char) * 1024);
     for (elem = My402ListFirst(myList); elem != NULL;
          elem = My402ListNext(myList, elem)) {
-        // TransField *trans = (TransField *)malloc(sizeof(TransField));
         trans = elem->obj;
         // Time Field
         char timeStamp[16];
@@ -247,7 +271,6 @@ void printList(My402List *myList) {
         desc[24] = '\0';
         strncpy(desc, tmpDesc, 24);
         // add ' ' to the end of the desc
-        // printf("[%lu]", strlen(desc));
         if (strlen(desc) < 24) {
             for (int i = strlen(desc) - 1; i < descFieldLength; i++) {
                 desc[i] = ' ';
@@ -260,7 +283,6 @@ void printList(My402List *myList) {
         int amt_in_cents = trans->amount;
         char amount_buf[80];
         formatCents(amt_in_cents, amount_buf);
-        // printf("[%ld]", strlen(amount_buf));
         char amount[15];
         amount[14] = '\0';
         int amount_idx = 12;
@@ -288,7 +310,6 @@ void printList(My402List *myList) {
         }
         char balance_buf[80];
         formatCents(balance_in_cents, balance_buf);
-        // printf("[%ld]", strlen(amount_buf));
         char balance[15];
         balance[14] = '\0';
         int balance_idx = 12;
@@ -302,11 +323,10 @@ void printList(My402List *myList) {
         balance[13] = ' ';
         fprintf(stdout, "%s |", balance);
         ////////////////////////////////////////////////////////////////
-        transCnt++;
-        if (transCnt != 4) fprintf(stdout, "\n");
+        fprintf(stdout, "\n");
     }
     free(elem);
-    free(trans);
+    // free(trans);
 }
 
 void printHeader() {
@@ -325,10 +345,9 @@ void printHeader() {
 }
 
 void printFooter() {
-    fprintf(
-        stdout,
-        "\n+-----------------+--------------------------+----------------+---"
-        "-------------+\n");
+    fprintf(stdout,
+            "+-----------------+--------------------------+----------------+---"
+            "-------------+\n");
 }
 
 void sortList(My402List *myList) {
@@ -356,20 +375,14 @@ void sortList(My402List *myList) {
 /* ----------------------- main() ----------------------- */
 int main(int argc, char *argv[]) {
     My402List *myList = (My402List *)malloc(sizeof(My402List));
-    char *tok;
-    FILE *fp = fopen(argv[1], "r");
-    if (!fp) {
-        printf("Can't find %s\n", argv[1]);
-        exit(0);
-    } else {
-        printf("reading %s...\n", argv[1]);
-    }
+    // FILE *fp = fopen(argv[1], "r");
+    FILE *fp = readCommandLine(argc, argv);
     readFile(fp, myList);
     sortList(myList);
     printHeader();
     printList(myList);
     printFooter();
-    fclose(fp);
     free(myList);
+    fclose(fp);
     return 0;
 }
