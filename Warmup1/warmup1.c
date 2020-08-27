@@ -156,8 +156,8 @@ void readFile(FILE *fp, My402List *myList) {
         tmpPeriod = strtok(NULL, ".");
         if (strlen(tmpPeriod) > 2) {
             fprintf(stderr,
-                    "Error: The amount of number after decimal could only be 2 "
-                    "(Ex: xxx.xx) !\n");
+                    "Error: The amount of number in decimal could only be 2 "
+                    "(Ex: xxx.xx -> PASS | xxx.xxxx -> FAIL) !\n");
             exit(0);
         }
         int amtDecimal = atoi(tmpPeriod);
