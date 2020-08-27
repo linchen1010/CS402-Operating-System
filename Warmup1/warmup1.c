@@ -27,18 +27,22 @@ FILE *readCommandLine(int argc, char *argv[]) {
     if (argc != 2 && argc != 3) {
         fprintf(stderr, "Error: Invalid numbers of command line argumnets!\n");
         fprintf(stderr, "Usage: ./warmup1 sort [tfile]\n");
-        return NULL;
+        exit(0);
+
     } else {
         if (strcmp(argv[1], "sort") != 0) {
             fprintf(stderr, "Error: Invalid command!\n");
             fprintf(stderr, "Usage: ./warmup1 sort [tfile]\n");
-            return NULL;
+            exit(0);
         } else {
             if (argv[2]) {
                 FILE *fp = fopen(argv[2], "r");
                 if (fp == NULL) {
-                    fprintf(stderr, "Error: Can't not read %s ...\n", argv[2]);
-                    return NULL;
+                    fprintf(stderr,
+                            "Error: Malformed command or input file \"%s\" "
+                            "does not exist ...\n",
+                            argv[2]);
+                    exit(0);
                 } else {
                     return fp;
                 }
