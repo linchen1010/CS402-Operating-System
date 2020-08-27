@@ -102,7 +102,7 @@ void readFile(FILE *fp, My402List *myList) {
         }
         ////////////////////////////////////////////
         //
-        // 1st Field (transaction type)
+        // 1st Field (Transaction type)
         char *start_ptr = buf;
         char *tab_ptr = strchr(start_ptr, '\t');
         if (tab_ptr) {
@@ -117,7 +117,7 @@ void readFile(FILE *fp, My402List *myList) {
             trans->type = start_ptr[0];
         }
         //////////////////////////////////////////////////////////////////////
-        // 2nd Field (Time stamp)
+        // 2nd Field (Timestamp)
         start_ptr = tab_ptr;
         tab_ptr = strchr(start_ptr, '\t');
         if (tab_ptr) {
@@ -141,7 +141,7 @@ void readFile(FILE *fp, My402List *myList) {
             trans->time = transTime;
         }
         //////////////////////////////////////////////////////////////////////
-        // 3rd Field (amount)
+        // 3rd Field (Amount)
         start_ptr = tab_ptr;
         tab_ptr = strchr(start_ptr, '\t');
         if (tab_ptr) {
@@ -167,7 +167,7 @@ void readFile(FILE *fp, My402List *myList) {
             exit(0);
         }
         //////////////////////////////////////////////////////////////////////
-        // 4th Field (description)
+        // 4th Field (Description)
         start_ptr = tab_ptr;
         tab_ptr = strchr(start_ptr, '\t');
         if (tab_ptr) {
@@ -175,7 +175,7 @@ void readFile(FILE *fp, My402List *myList) {
         }
         char *desc = start_ptr;
         trans->description = strdup(desc);
-        // check empty -- might have bug
+        // check empty
         if (strlen(trans->description) == 1 && trans->description[0] == '\n') {
             fprintf(stderr, "Transaction desciption cannot be empty.\n");
             exit(0);
@@ -242,19 +242,19 @@ void printList(My402List *myList) {
     for (elem = My402ListFirst(myList); elem != NULL;
          elem = My402ListNext(myList, elem)) {
         trans = elem->obj;
-        // Time Field
+        // *** Time Field
         char timeStamp[16];
         time_t time = trans->time;
         convertTimeFormat(timeStamp, time);
         fprintf(stdout, "| %s | ", timeStamp);
         ////////////////////////////////////////////////////////////////
-        // Description Field
+        // *** Description Field
         char *tmpDesc = trans->description;
         char desc[25];
         tmpDesc = removeLeadingSpace(trans->description);
         desc[24] = '\0';
         strncpy(desc, tmpDesc, 24);
-        // add ' ' to the end of the desc
+        // append ' ' to the end of the desc
         if (strlen(desc) < 24) {
             for (int i = strlen(desc) - 1; i < descFieldLength; i++) {
                 desc[i] = ' ';
@@ -263,17 +263,17 @@ void printList(My402List *myList) {
 
         fprintf(stdout, "%s | ", desc);
         ////////////////////////////////////////////////////////////////
-        // amount Field
+        // *** Amount Field
         int amt_in_cents = trans->amount;
         char amount_buf[80];
         formatCents(amt_in_cents, amount_buf);
         char amount[15];
         amount[14] = '\0';
         int amount_idx = 12;
-
         for (int i = strlen(amount_buf) - 1; i >= 0; i--) {
             amount[amount_idx--] = amount_buf[i];
         }
+        // prepend space
         while (amount_idx) {
             amount[amount_idx--] = ' ';
         }
@@ -286,7 +286,7 @@ void printList(My402List *myList) {
         }
         fprintf(stdout, "%s | ", amount);
         ////////////////////////////////////////////////////////////////
-        // balance Field
+        // *** Balance Field
         if (trans->type == '+') {
             balance_in_cents += amt_in_cents;
         } else {
