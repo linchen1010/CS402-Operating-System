@@ -33,12 +33,10 @@ int tokenCount = 0;
 int tokenInBucket = 0;
 int tokenDrop = 0;
 int pktOrder = 1;
-struct timeval systemTime;
 char *tsfile;
 FILE *fp = NULL;
 // Time stamps variables
-double arrStart, arrEnd;
-double tokStart, tokEnd;
+double arrStart, tokStart;
 double emulationStart, emulationEnd;
 ///
 int arrivalThreadWorking = TRUE;
@@ -318,26 +316,6 @@ void *pktArrivalThread(void *id) {
                 fprintf(stdout, "%012.3fms: p%d enters Q1\n",
                         myPacket->q1EnterTime, myPacket->pktID);
 
-                if (My402ListLength(&queue1) == 1) {
-                    My402ListElem *elem = NULL;
-                    elem = My402ListFirst(&queue1);
-                    if (tokenInBucket >= myPacket->numToken) {
-                        My402ListUnlink(&queue1, elem);
-                        tokenInBucket -= myPacket->numToken;
-                        myPacket->q1LeaveTime = getInstantTime() - arrStart;
-                        fprintf(
-                            stdout,
-                            "%012.3fms: p%d leaves Q1, time in Q1 = %.3fms, "
-                            "token bucket now has %d tokens\n",
-                            myPacket->q1LeaveTime, myPacket->pktID,
-                            myPacket->q1LeaveTime - myPacket->q1EnterTime,
-                            tokenInBucket);
-                        My402ListAppend(&queue2, myPacket);
-                        myPacket->q2EnterTime = getInstantTime() - arrStart;
-                        fprintf(stdout, "%012.3fms: p%d enters Q2\n",
-                                myPacket->q2EnterTime, myPacket->pktID);
-                    }
-                }
             } else {  // packeted needed token is greater than B
                 fprintf(stdout,
                         "%012.3fms: p%d arrives, needs %d tokens, "
@@ -372,26 +350,6 @@ void *pktArrivalThread(void *id) {
                 myPacket->q1EnterTime = getInstantTime() - arrStart;
                 fprintf(stdout, "%012.3fms: p%d enters Q1\n",
                         myPacket->q1EnterTime, myPacket->pktID);
-
-                if (!My402ListEmpty(&queue1)) {
-                    My402ListElem *elem = My402ListFirst(&queue1);
-                    if (tokenInBucket >= myPacket->numToken) {
-                        My402ListUnlink(&queue1, elem);
-                        tokenInBucket -= myPacket->numToken;
-                        myPacket->q1LeaveTime = getInstantTime() - arrStart;
-                        fprintf(
-                            stdout,
-                            "%012.3fms: p%d leaves Q1, time in Q1 = %.3fms, "
-                            "token bucket now has %d tokens\n",
-                            myPacket->q1LeaveTime, myPacket->pktID,
-                            myPacket->q1LeaveTime - myPacket->q1EnterTime,
-                            tokenInBucket);
-                        My402ListAppend(&queue2, myPacket);
-                        myPacket->q2EnterTime = getInstantTime() - arrStart;
-                        fprintf(stdout, "%012.3fms: p%d enters Q2\n",
-                                myPacket->q2EnterTime, myPacket->pktID);
-                    }
-                }
             } else {  // packeted needed token is greater than B
                 fprintf(stdout,
                         "%012.3fms: p%d arrives, needs %d tokens, "
@@ -542,7 +500,6 @@ void checkPara() {
 }
 
 int main(int argc, char *argv[]) {
-    // FILE *fp = readCommandLine(argc, argv);
     // setting time parameters to default values
     lambda = 1;
     mu = 0.35;
@@ -565,10 +522,6 @@ int main(int argc, char *argv[]) {
     My402ListInit(&queue1);
     My402ListInit(&queue1);
     printEmulationPara();
-    // char buf[1024];
-    // test(buf, fp);
-    // emulationPara();
-    // pthread_cancel(tokThread);
     fprintf(stdout, "%012.3fms: emulation begins\n", 0.0);
     pthread_create(&arrThread, NULL, pktArrivalThread, NULL);
     pthread_create(&tokThread, NULL, tokenThread, NULL);
