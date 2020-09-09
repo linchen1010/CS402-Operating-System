@@ -526,7 +526,6 @@ void printEmulationPara() {
         fprintf(stdout, "\tB = %d\n", B);
         fprintf(stdout, "\ttsfile = %s\n", tsfile);
     }
-    fprintf(stdout, "Mode = %c\n", emulationMode);
 }
 
 void checkPara() {
@@ -562,17 +561,15 @@ int main(int argc, char *argv[]) {
     // emulationPara();
     // pthread_cancel(tokThread);
     double startTime = getInstantTime();
-    fprintf(stdout, "%012.3fms: emulation begins\n",
-            getInstantTime() - startTime);
+    fprintf(stdout, "%012.3fms: emulation begins\n", 0.0);
     pthread_create(&arrThread, NULL, pktArrivalThread, NULL);
     pthread_create(&tokThread, NULL, tokenThread, NULL);
     pthread_join(tokThread, NULL);
     pthread_join(arrThread, NULL);
     pthread_create(&ser1Thread, NULL, serverThread, (void *)1);
     pthread_create(&ser2Thread, NULL, serverThread, (void *)2);
-    pthread_join(ser2Thread, NULL);
     pthread_join(ser1Thread, NULL);
-
+    pthread_join(ser2Thread, NULL);
     fprintf(stdout, "%012.3fms: emulation ends\n",
             getInstantTime() - startTime);
 
