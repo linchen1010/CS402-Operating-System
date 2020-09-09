@@ -496,18 +496,20 @@ void *serverThread(void *id) {
                     "service\n",
                     myPacket->startServerTime, myPacket->pktID, serID,
                     myPacket->serviceTime);
-            sleepTime = myPacket->serviceTime * 1000;
-            usleep(sleepTime);
-            myPacket->quitTime = getInstantTime() - tokStart;
-            fprintf(
-                stdout,
+        } else {
+            pthread_mutex_unlock(&mutex);
+            break;
+        }
+        pthread_mutex_unlock(&mutex);
+        sleepTime = myPacket->serviceTime * 1000;
+        usleep(sleepTime);
+        myPacket->quitTime = getInstantTime() - tokStart;
+        fprintf(stdout,
                 "%012.3fms: p%d departs from S%d, service time = %.3fms, time "
                 "in system = %.3fms\n",
                 myPacket->quitTime, myPacket->pktID, serID,
                 myPacket->quitTime - myPacket->startServerTime,
                 myPacket->quitTime - myPacket->arrivalTime);
-        }
-        pthread_mutex_unlock(&mutex);
     }
     time_to_quit = 1;
     pthread_exit(NULL);
