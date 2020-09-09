@@ -277,7 +277,6 @@ void *pktArrivalThread(void *id) {
     // Packet *myPacket = malloc(sizeof(myPacket));
     int sleepTime = 0;
     double prevPktArrTime = 0;
-    arrStart = getInstantTime();
     // fprintf(stdout, "I'm in arrThread!\n");
     for (int i = 0; i < num_packets; i++) {
         Packet *myPacket = (Packet *)malloc(sizeof(Packet));
@@ -294,7 +293,7 @@ void *pktArrivalThread(void *id) {
             myPacket->pktID = pktOrder++;
             char *tmp;
             tmp = strtok(buf, " \n");
-            myPacket->pktIntervalArrivalTIme = atoi(tmp);
+            myPacket->pktIntervalArrivalTIme = atof(tmp);
             tmp = strtok(NULL, " \n\t");
             myPacket->numToken = atoi(tmp);
             tmp = strtok(NULL, " \n\t");
@@ -352,16 +351,16 @@ void *pktArrivalThread(void *id) {
         } else {  // Deterministic mode
             myPacket->pktID = pktOrder++;
             myPacket->numToken = P;
-            myPacket->pktIntervalArrivalTIme = (1 / lambda) * 1000.0;
-            myPacket->serviceTime = (1 / mu) * 1000.0;
+            myPacket->pktIntervalArrivalTIme = min(10000, (1000.0 / lambda));
+            myPacket->serviceTime = min(10000, (1000.0 / mu));
 
             sleepTime = myPacket->pktIntervalArrivalTIme * 1000.0;
             usleep(sleepTime);
-            myPacket->arrivalTime = getInstantTime() - arrStart;
 
             pthread_mutex_lock(&mutex);
 
             if (myPacket->numToken <= B) {
+                myPacket->arrivalTime = getInstantTime() - arrStart;
                 fprintf(stdout,
                         "%012.3fms: p%d arrives, needs %d tokens, "
                         "inter-arrival time = %.3fms\n",
@@ -420,8 +419,7 @@ void *pktArrivalThread(void *id) {
 // sleeping server thread -> call pthread_cond_broadcase()
 void *tokenThread(void *id) {
     // printf("I'm in tokThread!\n");
-    double tokenArrTime = 1000 * (1 / r);
-    tokStart = getInstantTime();
+    double tokenArrTime = 1000.0 * min(10, (1 / r));
     while (!My402ListEmpty(&queue1) || arrivalThreadWorking) {
         int sleepTime = 1000 * tokenArrTime;
         usleep(sleepTime);
@@ -488,11 +486,11 @@ void *serverThread(void *id) {
             elem = My402ListFirst(&queue2);
             myPacket = (Packet *)elem->obj;
             My402ListUnlink(&queue2, elem);
-            myPacket->q2LeaveTime = getInstantTime() - arrStart;
+            myPacket->q2LeaveTime = getInstantTime() - tokStart;
             fprintf(stdout, "%012.3fms: p%d leave Q2, time in Q2 = %.3fms\n",
                     myPacket->q2LeaveTime, myPacket->pktID,
                     myPacket->q2LeaveTime - myPacket->q2EnterTime);
-            myPacket->startServerTime = getInstantTime() - arrStart;
+            myPacket->startServerTime = getInstantTime() - tokStart;
             fprintf(stdout,
                     "%012.3fms: p%d begins services at S%d, requesting %dms of "
                     "service\n",
@@ -500,7 +498,7 @@ void *serverThread(void *id) {
                     myPacket->serviceTime);
             sleepTime = myPacket->serviceTime * 1000;
             usleep(sleepTime);
-            myPacket->quitTime = getInstantTime() - arrStart;
+            myPacket->quitTime = getInstantTime() - tokStart;
             fprintf(
                 stdout,
                 "%012.3fms: p%d departs from S%d, service time = %.3fms, time "
@@ -532,11 +530,11 @@ void printEmulationPara() {
 }
 
 void checkPara() {
-    if ((1000.0 / lambda) > 10000) {
+    if (lambda < 0.1) {
         lambda = 0.1;
     }
 
-    if ((1000.0 / mu) > 10000) {
+    if (mu < 0.1) {
         mu = 0.1;
     }
 }
@@ -549,13 +547,17 @@ int main(int argc, char *argv[]) {
     r = 1.5;
     B = 10;
     P = 3;
-    num_packets = 1;
+    num_packets = 20;
     ////////////////////////////////////////////////
     readCommandLine(argc, argv);
     if (emulationMode == 'T') {
         readFile(tsfile);
     }
-    checkPara();
+    if (emulationMode == 'D') {
+        checkPara();
+    }
+    double startTime = getInstantTime();
+    arrStart = tokStart = getInstantTime();
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&queue_cv, NULL);
     My402ListInit(&queue1);
@@ -565,7 +567,6 @@ int main(int argc, char *argv[]) {
     // test(buf, fp);
     // emulationPara();
     // pthread_cancel(tokThread);
-    double startTime = getInstantTime();
     fprintf(stdout, "%012.3fms: emulation begins\n", 0.0);
     pthread_create(&arrThread, NULL, pktArrivalThread, NULL);
     pthread_create(&tokThread, NULL, tokenThread, NULL);
