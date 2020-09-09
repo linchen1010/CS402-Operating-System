@@ -52,7 +52,7 @@ int B, P;
 int num_packets;
 /* ----------------------- pthread varaibles ----------------------- */
 pthread_t arrThread, tokThread, ser1Thread, ser2Thread;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex;
 pthread_cond_t queue_cv;
 
 /* ----------------------- function part  ----------------------- */
@@ -408,6 +408,9 @@ void *pktArrivalThread(void *id) {
         pthread_cond_broadcast(&queue_cv);
         pthread_mutex_unlock(&mutex);
     }
+    if (emulationMode == 'T') {
+        fclose(fp);
+    }
     arrivalThreadWorking = FALSE;
     pthread_exit(NULL);
 }
@@ -460,10 +463,10 @@ void *tokenThread(void *id) {
 
         pthread_mutex_unlock(&mutex);
     }
-    if (emulationMode == 'T') {
-        fclose(fp);
-    }
+    pthread_mutex_lock(&mutex);
+    pthread_cond_broadcast(&queue_cv);
     tokenThreadWorking = FALSE;
+    pthread_mutex_unlock(&mutex);
     pthread_exit(NULL);
 }
 
@@ -480,7 +483,6 @@ void *serverThread(void *id) {
         while (!time_to_quit && My402ListEmpty(&queue2) && tokenThreadWorking) {
             pthread_cond_wait(&queue_cv, &mutex);
         }
-
         if (!My402ListEmpty(&queue2)) {
             My402ListElem *elem = NULL;
             elem = My402ListFirst(&queue2);
@@ -496,19 +498,20 @@ void *serverThread(void *id) {
                     "service\n",
                     myPacket->startServerTime, myPacket->pktID, serID,
                     myPacket->serviceTime);
-        }
-        pthread_mutex_unlock(&mutex);
-        sleepTime = myPacket->serviceTime * 1000;
-        usleep(sleepTime);
-        myPacket->quitTime = getInstantTime() - arrStart;
-        fprintf(stdout,
+            sleepTime = myPacket->serviceTime * 1000;
+            usleep(sleepTime);
+            myPacket->quitTime = getInstantTime() - arrStart;
+            fprintf(
+                stdout,
                 "%012.3fms: p%d departs from S%d, service time = %.3fms, time "
                 "in system = %.3fms\n",
                 myPacket->quitTime, myPacket->pktID, serID,
                 myPacket->quitTime - myPacket->startServerTime,
                 myPacket->quitTime - myPacket->arrivalTime);
+        }
+        pthread_mutex_unlock(&mutex);
     }
-
+    time_to_quit = 1;
     pthread_exit(NULL);
 }
 
@@ -553,9 +556,11 @@ int main(int argc, char *argv[]) {
         readFile(tsfile);
     }
     checkPara();
-    printEmulationPara();
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&queue_cv, NULL);
     My402ListInit(&queue1);
-
+    My402ListInit(&queue1);
+    printEmulationPara();
     // char buf[1024];
     // test(buf, fp);
     // emulationPara();
@@ -564,10 +569,10 @@ int main(int argc, char *argv[]) {
     fprintf(stdout, "%012.3fms: emulation begins\n", 0.0);
     pthread_create(&arrThread, NULL, pktArrivalThread, NULL);
     pthread_create(&tokThread, NULL, tokenThread, NULL);
-    pthread_join(tokThread, NULL);
-    pthread_join(arrThread, NULL);
     pthread_create(&ser1Thread, NULL, serverThread, (void *)1);
     pthread_create(&ser2Thread, NULL, serverThread, (void *)2);
+    pthread_join(tokThread, NULL);
+    pthread_join(arrThread, NULL);
     pthread_join(ser1Thread, NULL);
     pthread_join(ser2Thread, NULL);
     fprintf(stdout, "%012.3fms: emulation ends\n",
