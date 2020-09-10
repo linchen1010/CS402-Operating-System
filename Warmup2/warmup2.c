@@ -1,9 +1,7 @@
 #include <dirent.h>
-#include <errno.h>
 #include <math.h>
 #include <pthread.h>
 #include <signal.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,8 +29,18 @@ typedef struct tagPacket {
 My402List queue1, queue2;
 int tokenCount = 0;
 int tokenInBucket = 0;
-int tokenDrop = 0;
 int pktOrder = 1;
+int tokenDrop = 0;
+int packetDrop = 0;
+int numPacket = 0;
+double averIntervalTime = 0;
+double averServiceTime = 0;
+double q1TotalTime = 0;
+double q2TotalTime = 0;
+double s1TotalTime = 0;
+double s2TotalTime = 0;
+double totalSystemTime = 0;
+double emulationTime = 0;
 char *tsfile;
 FILE *fp = NULL;
 // Time stamps variables
@@ -298,7 +306,7 @@ void *pktArrivalThread(void *id) {
             myPacket->serviceTime = atoi(tmp);
 
             sleepTime = myPacket->pktIntervalArrivalTIme * 1000;
-
+            numPacket++;
             usleep(sleepTime);
             myPacket->arrivalTime = getInstantTime() - arrStart;
             pthread_mutex_lock(&mutex);
@@ -310,6 +318,8 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
+                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
+                averServiceTime += myPacket->serviceTime;
                 prevPktArrTime = myPacket->arrivalTime;
                 My402ListAppend(&queue1, myPacket);
                 myPacket->q1EnterTime = getInstantTime() - arrStart;
@@ -323,15 +333,17 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
+                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
+                averServiceTime += myPacket->serviceTime;
                 prevPktArrTime = myPacket->arrivalTime;
-                tokenDrop++;
+                packetDrop++;
             }
         } else {  // Deterministic mode
             myPacket->pktID = pktOrder++;
             myPacket->numToken = P;
             myPacket->pktIntervalArrivalTIme = min(10000, (1000.0 / lambda));
             myPacket->serviceTime = min(10000, (1000.0 / mu));
-
+            numPacket++;
             sleepTime = myPacket->pktIntervalArrivalTIme * 1000.0;
             usleep(sleepTime);
 
@@ -345,6 +357,8 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
+                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
+                averServiceTime += myPacket->serviceTime;
                 prevPktArrTime = myPacket->arrivalTime;
                 My402ListAppend(&queue1, myPacket);
                 myPacket->q1EnterTime = getInstantTime() - arrStart;
@@ -357,8 +371,10 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
+                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
+                averServiceTime += myPacket->serviceTime;
                 prevPktArrTime = myPacket->arrivalTime;
-                tokenDrop++;
+                packetDrop++;
             }
         }
 
@@ -390,6 +406,7 @@ void *tokenThread(void *id) {
                     "tokens\n",
                     getInstantTime() - tokStart, tokenCount, tokenInBucket);
         } else {
+            tokenDrop++;
             fprintf(stdout, "%012.3fms: token t%d arrives, dropped\n",
                     getInstantTime() - tokStart, tokenCount);
         }
@@ -403,6 +420,7 @@ void *tokenThread(void *id) {
                 tokenInBucket -= myPacket->numToken;
                 My402ListUnlink(&queue1, elem);
                 myPacket->q1LeaveTime = getInstantTime() - tokStart;
+                q1TotalTime += (myPacket->q1LeaveTime - myPacket->q1EnterTime);
                 fprintf(stdout,
                         "%012.3fms: p%d leaves Q1, time in Q1 = %.3fms, token "
                         "bucket now has %d token\n",
@@ -428,8 +446,6 @@ void *tokenThread(void *id) {
 
 // checks if Q2 is empty or not. if Q2 is empty, it goes to sleep (in a CV
 // queue).
-
-// server 1
 void *serverThread(void *id) {
     int serID = (int)id;
     int sleepTime = 0;
@@ -445,6 +461,7 @@ void *serverThread(void *id) {
             myPacket = (Packet *)elem->obj;
             My402ListUnlink(&queue2, elem);
             myPacket->q2LeaveTime = getInstantTime() - tokStart;
+            q2TotalTime += (myPacket->q2LeaveTime - myPacket->q2EnterTime);
             fprintf(stdout, "%012.3fms: p%d leave Q2, time in Q2 = %.3fms\n",
                     myPacket->q2LeaveTime, myPacket->pktID,
                     myPacket->q2LeaveTime - myPacket->q2EnterTime);
@@ -468,6 +485,12 @@ void *serverThread(void *id) {
                 myPacket->quitTime, myPacket->pktID, serID,
                 myPacket->quitTime - myPacket->startServerTime,
                 myPacket->quitTime - myPacket->arrivalTime);
+        if (serID == 1) {
+            s1TotalTime += (myPacket->quitTime - myPacket->startServerTime);
+        } else {
+            s2TotalTime += (myPacket->quitTime - myPacket->startServerTime);
+        }
+        totalSystemTime += (myPacket->quitTime - myPacket->arrivalTime);
     }
     time_to_quit = 1;
     pthread_exit(NULL);
@@ -487,6 +510,30 @@ void printEmulationPara() {
         fprintf(stdout, "\tB = %d\n", B);
         fprintf(stdout, "\ttsfile = %s\n", tsfile);
     }
+}
+
+void printStatics() {
+    fprintf(stdout, "Statistic: \n\n");
+    fprintf(stdout, "\taverage packet inter-arrival time = %.6g\n",
+            averIntervalTime / num_packets / 1000.0);
+    fprintf(stdout, "\taverage packet service time = %.6g\n",
+            averServiceTime / num_packets / 1000.0);
+    fprintf(stdout, "\n");
+    fprintf(stdout, "\taverage number of packets in Q1 = %.6g\n",
+            q1TotalTime / emulationTime);
+    fprintf(stdout, "\taverage number of packets in Q2 = %.6g\n",
+            q2TotalTime / emulationTime);
+    fprintf(stdout, "\taverage number of packets in S1 = %.6g\n",
+            s1TotalTime / emulationTime);
+    fprintf(stdout, "\taverage number of packets in S2 = %.6g\n\n",
+            s2TotalTime / emulationTime);
+    fprintf(stdout, "\taverage time a packet spent in system = %.6g\n",
+            totalSystemTime / (num_packets - packetDrop) / 1000.0);
+    fprintf(stdout, "\tstandard deviation for time spent in system = \n\n");
+    fprintf(stdout, "\ttoken drop probability = %.6g\n",
+            ((1.0 * tokenDrop) / tokenCount));
+    fprintf(stdout, "\tpacket drop probability = %.6g\n",
+            ((1.0 * packetDrop) / (num_packets)));
 }
 
 void checkPara() {
@@ -512,6 +559,7 @@ int main(int argc, char *argv[]) {
     if (emulationMode == 'T') {
         readFile(tsfile);
     }
+    printEmulationPara();
     if (emulationMode == 'D') {
         checkPara();
     }
@@ -521,7 +569,6 @@ int main(int argc, char *argv[]) {
     pthread_cond_init(&queue_cv, NULL);
     My402ListInit(&queue1);
     My402ListInit(&queue1);
-    printEmulationPara();
     fprintf(stdout, "%012.3fms: emulation begins\n", 0.0);
     pthread_create(&arrThread, NULL, pktArrivalThread, NULL);
     pthread_create(&tokThread, NULL, tokenThread, NULL);
@@ -531,8 +578,10 @@ int main(int argc, char *argv[]) {
     pthread_join(arrThread, NULL);
     pthread_join(ser1Thread, NULL);
     pthread_join(ser2Thread, NULL);
-    fprintf(stdout, "%012.3fms: emulation ends\n",
-            getInstantTime() - startTime);
+    emulationTime = getInstantTime() - startTime;
+    fprintf(stdout, "%012.3fms: emulation ends\n\n", emulationTime);
+
+    printStatics();
 
     return 0;
 }
