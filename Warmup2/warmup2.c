@@ -45,8 +45,7 @@ char *tsfile;
 FILE *fp = NULL;
 // Time stamps variables
 double arrStart, tokStart;
-double emulationStart, emulationEnd;
-///
+////////////////////////////////
 int arrivalThreadWorking = TRUE;
 int tokenThreadWorking = TRUE;
 int time_to_quit = 0;
@@ -57,12 +56,11 @@ double lambda, mu, r;
 int B, P;
 int num_packets;
 /* ----------------------- pthread varaibles ----------------------- */
-pthread_t arrThread, tokThread, ser1Thread, ser2Thread;
+pthread_t arrThread, tokThread, ser1Thread, ser2Thread, ctrlCThread;
 pthread_mutex_t mutex;
 pthread_cond_t queue_cv;
-
+sigset_t set;
 /* ----------------------- function part  ----------------------- */
-
 double getInstantTime() {
     struct timeval currTime;
     gettimeofday(&currTime, NULL);
@@ -276,6 +274,38 @@ void readFile(char *tsfile) {
     }
 }
 
+void cleanQueue() {
+    while (!My402ListEmpty(&queue1)) {
+        Packet *myPacket = My402ListFirst(&queue1)->obj;
+        My402ListUnlink(&queue1, My402ListFirst(&queue1));
+        fprintf(stdout, "%012.3fms: p%d removed from Q1\n",
+                getInstantTime() - arrStart, myPacket->pktID);
+    }
+    while (!My402ListEmpty(&queue2)) {
+        Packet *myPacket = My402ListFirst(&queue2)->obj;
+        My402ListUnlink(&queue2, My402ListFirst(&queue2));
+        fprintf(stdout, "%012.3fms: p%d removed from Q2\n",
+                getInstantTime() - arrStart, myPacket->pktID);
+    }
+}
+
+void *monitor() {
+    int sig;
+    while (1) {
+        sigwait(&set, &sig);
+        pthread_mutex_lock(&mutex);
+        fprintf(stdout,
+                "\nSIGINT caught, no new packets or tokens will be allowed\n");
+        time_to_quit = 1;  // when ctrl c is pressed
+        pthread_cancel(arrThread);
+        pthread_cancel(tokThread);
+        pthread_cond_broadcast(&queue_cv);
+        cleanQueue();
+        pthread_mutex_unlock(&mutex);
+    }
+    return 0;
+}
+
 // need to generate packet in the specified way, then create a packet and
 // add it to Q1 if this thread is moving a packet into Q2, it needs to wake
 // up a sleeping server thread -> call pthread_cond_broadcase()
@@ -306,10 +336,15 @@ void *pktArrivalThread(void *id) {
             myPacket->serviceTime = atoi(tmp);
 
             sleepTime = myPacket->pktIntervalArrivalTIme * 1000;
+            pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
             usleep(sleepTime);
+            pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, 0);
             myPacket->arrivalTime = getInstantTime() - arrStart;
             pthread_mutex_lock(&mutex);
-
+            if (time_to_quit) {
+                pthread_mutex_unlock(&mutex);
+                break;
+            }
             if (myPacket->numToken <= B) {
                 fprintf(stdout,
                         "%012.3fms: p%d arrives, needs %d tokens, "
@@ -386,12 +421,17 @@ void *pktArrivalThread(void *id) {
 // bucekt (int) if thread is moving a packet into Q2, it needs to wake up a
 // sleeping server thread -> call pthread_cond_broadcast()
 void *tokenThread(void *id) {
-    // printf("I'm in tokThread!\n");
     double tokenArrTime = 1000.0 * min(10, (1 / r));
     while (!My402ListEmpty(&queue1) || arrivalThreadWorking) {
         int sleepTime = 1000 * tokenArrTime;
+        pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, 0);
         usleep(sleepTime);
+        pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, 0);
         pthread_mutex_lock(&mutex);
+        if (time_to_quit) {
+            pthread_mutex_unlock(&mutex);
+            break;
+        }
         tokenCount++;
         if (tokenInBucket < B) {
             tokenInBucket++;
@@ -438,7 +478,7 @@ void *tokenThread(void *id) {
 }
 
 // checks if Q2 is empty or not. if Q2 is empty, it goes to sleep (in a CV
-// queue).
+// queue). Otherwise, dequeue q2.
 void *serverThread(void *id) {
     int serID = (int)id;
     int sleepTime = 0;
@@ -566,11 +606,15 @@ int main(int argc, char *argv[]) {
     }
     double startTime = getInstantTime();
     arrStart = tokStart = getInstantTime();
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+    sigprocmask(SIG_BLOCK, &set, 0);
     pthread_mutex_init(&mutex, NULL);
     pthread_cond_init(&queue_cv, NULL);
     My402ListInit(&queue1);
     My402ListInit(&queue1);
     fprintf(stdout, "%012.3fms: emulation begins\n", 0.0);
+    pthread_create(&ctrlCThread, NULL, monitor, NULL);
     pthread_create(&arrThread, NULL, pktArrivalThread, NULL);
     pthread_create(&tokThread, NULL, tokenThread, NULL);
     pthread_create(&ser1Thread, NULL, serverThread, (void *)1);
