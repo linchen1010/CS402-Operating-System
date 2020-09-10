@@ -33,8 +33,8 @@ int pktOrder = 1;
 int tokenDrop = 0;
 int packetDrop = 0;
 int numPacket = 0;
-double averIntervalTime = 0;
-double averServiceTime = 0;
+double totalIntervalTime = 0;
+double totalServiceTime = 0;
 double q1TotalTime = 0;
 double q2TotalTime = 0;
 double s1TotalTime = 0;
@@ -318,8 +318,7 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
-                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
-                averServiceTime += myPacket->serviceTime;
+                totalIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
                 prevPktArrTime = myPacket->arrivalTime;
                 My402ListAppend(&queue1, myPacket);
                 myPacket->q1EnterTime = getInstantTime() - arrStart;
@@ -333,8 +332,7 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
-                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
-                averServiceTime += myPacket->serviceTime;
+                totalIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
                 prevPktArrTime = myPacket->arrivalTime;
                 packetDrop++;
             }
@@ -357,8 +355,7 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
-                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
-                averServiceTime += myPacket->serviceTime;
+                totalIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
                 prevPktArrTime = myPacket->arrivalTime;
                 My402ListAppend(&queue1, myPacket);
                 myPacket->q1EnterTime = getInstantTime() - arrStart;
@@ -371,8 +368,7 @@ void *pktArrivalThread(void *id) {
                         myPacket->arrivalTime, myPacket->pktID,
                         myPacket->numToken,
                         myPacket->arrivalTime - prevPktArrTime);
-                averIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
-                averServiceTime += myPacket->serviceTime;
+                totalIntervalTime += (myPacket->arrivalTime - prevPktArrTime);
                 prevPktArrTime = myPacket->arrivalTime;
                 packetDrop++;
             }
@@ -485,6 +481,7 @@ void *serverThread(void *id) {
                 myPacket->quitTime, myPacket->pktID, serID,
                 myPacket->quitTime - myPacket->startServerTime,
                 myPacket->quitTime - myPacket->arrivalTime);
+        totalServiceTime += (myPacket->quitTime - myPacket->startServerTime);
         if (serID == 1) {
             s1TotalTime += (myPacket->quitTime - myPacket->startServerTime);
         } else {
@@ -515,9 +512,9 @@ void printEmulationPara() {
 void printStatics() {
     fprintf(stdout, "Statistic: \n\n");
     fprintf(stdout, "\taverage packet inter-arrival time = %.6g\n",
-            averIntervalTime / num_packets / 1000.0);
+            totalIntervalTime / num_packets / 1000.0);
     fprintf(stdout, "\taverage packet service time = %.6g\n",
-            averServiceTime / num_packets / 1000.0);
+            totalServiceTime / (num_packets - packetDrop) / 1000.0);
     fprintf(stdout, "\n");
     fprintf(stdout, "\taverage number of packets in Q1 = %.6g\n",
             q1TotalTime / emulationTime);
