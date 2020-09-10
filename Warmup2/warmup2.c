@@ -32,7 +32,6 @@ int tokenInBucket = 0;
 int pktOrder = 1;
 int tokenDrop = 0;
 int packetDrop = 0;
-int numPacket = 0;
 double totalIntervalTime = 0;
 double totalServiceTime = 0;
 double q1TotalTime = 0;
@@ -40,6 +39,7 @@ double q2TotalTime = 0;
 double s1TotalTime = 0;
 double s2TotalTime = 0;
 double totalSystemTime = 0;
+double totalSystemTimeSquare = 0;
 double emulationTime = 0;
 char *tsfile;
 FILE *fp = NULL;
@@ -306,7 +306,6 @@ void *pktArrivalThread(void *id) {
             myPacket->serviceTime = atoi(tmp);
 
             sleepTime = myPacket->pktIntervalArrivalTIme * 1000;
-            numPacket++;
             usleep(sleepTime);
             myPacket->arrivalTime = getInstantTime() - arrStart;
             pthread_mutex_lock(&mutex);
@@ -341,7 +340,6 @@ void *pktArrivalThread(void *id) {
             myPacket->numToken = P;
             myPacket->pktIntervalArrivalTIme = min(10000, (1000.0 / lambda));
             myPacket->serviceTime = min(10000, (1000.0 / mu));
-            numPacket++;
             sleepTime = myPacket->pktIntervalArrivalTIme * 1000.0;
             usleep(sleepTime);
 
@@ -386,7 +384,7 @@ void *pktArrivalThread(void *id) {
 
 // need to generate tokens in the specified way, then add a token to a token
 // bucekt (int) if thread is moving a packet into Q2, it needs to wake up a
-// sleeping server thread -> call pthread_cond_broadcase()
+// sleeping server thread -> call pthread_cond_broadcast()
 void *tokenThread(void *id) {
     // printf("I'm in tokThread!\n");
     double tokenArrTime = 1000.0 * min(10, (1 / r));
@@ -407,7 +405,6 @@ void *tokenThread(void *id) {
                     getInstantTime() - tokStart, tokenCount);
         }
         // if queue1 is not empty && token is enough, move packet from q1 to q2
-        //
         Packet *myPacket = NULL;
         if (!My402ListEmpty(&queue1)) {
             My402ListElem *elem = My402ListFirst(&queue1);
@@ -488,6 +485,8 @@ void *serverThread(void *id) {
             s2TotalTime += (myPacket->quitTime - myPacket->startServerTime);
         }
         totalSystemTime += (myPacket->quitTime - myPacket->arrivalTime);
+        totalSystemTimeSquare +=
+            pow((myPacket->quitTime - myPacket->arrivalTime), 2);
     }
     time_to_quit = 1;
     pthread_exit(NULL);
@@ -510,7 +509,7 @@ void printEmulationPara() {
 }
 
 void printStatics() {
-    fprintf(stdout, "Statistic: \n\n");
+    fprintf(stdout, "Statistics: \n\n");
     fprintf(stdout, "\taverage packet inter-arrival time = %.6g\n",
             totalIntervalTime / num_packets / 1000.0);
     fprintf(stdout, "\taverage packet service time = %.6g\n",
@@ -520,13 +519,18 @@ void printStatics() {
             q1TotalTime / emulationTime);
     fprintf(stdout, "\taverage number of packets in Q2 = %.6g\n",
             q2TotalTime / emulationTime);
-    fprintf(stdout, "\taverage number of packets in S1 = %.6g\n",
+    fprintf(stdout, "\taverage number of packets at S1 = %.6g\n",
             s1TotalTime / emulationTime);
-    fprintf(stdout, "\taverage number of packets in S2 = %.6g\n\n",
+    fprintf(stdout, "\taverage number of packets at S2 = %.6g\n\n",
             s2TotalTime / emulationTime);
     fprintf(stdout, "\taverage time a packet spent in system = %.6g\n",
             totalSystemTime / (num_packets - packetDrop) / 1000.0);
-    fprintf(stdout, "\tstandard deviation for time spent in system = \n\n");
+    double averSystemTime = totalSystemTime / (num_packets - packetDrop);
+    double averSystemTimeSquare =
+        totalSystemTimeSquare / (num_packets - packetDrop);
+    double var = averSystemTimeSquare - pow(averSystemTime, 2);
+    fprintf(stdout, "\tstandard deviation for time spent in system = %.6g\n\n",
+            sqrt(var) / 1000.0);
     fprintf(stdout, "\ttoken drop probability = %.6g\n",
             ((1.0 * tokenDrop) / tokenCount));
     fprintf(stdout, "\tpacket drop probability = %.6g\n",
