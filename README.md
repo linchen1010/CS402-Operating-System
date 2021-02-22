@@ -1,1 +1,1 @@
-# CS402-Operation-System
+# CS402-Operating-System
